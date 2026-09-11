@@ -1,0 +1,101 @@
+[project]
+name = "graphforge-erp-backend"
+version = "0.1.0"
+description = "Reference backend for a graph-based ERP: FastAPI, Neo4j, domain-driven design"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "bcrypt==4.2.1",
+    "fastapi[standard]>=0.139.2",
+    "loguru>=0.7.3",
+    "neo4j>=6.2.0",
+    "pydantic>=2.13.4",
+    # Imported directly by core/config.py. It also arrives transitively through
+    # fastapi[standard], but a direct import belongs in the direct dependencies —
+    # otherwise a change upstream can drop it without anything here noticing.
+    "pydantic-settings>=2.14.2",
+    "pyjwt>=2.13.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.9.1",
+    "poethepoet>=0.48.0",
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.1",
+    "testcontainers[neo4j]>=4.10",
+]
+
+[tool.ruff]
+# 100 instead of the default 88: the 95th percentile of the existing lines sits at 90
+# characters. At 88 the linter would flag hundreds of lines that are fine; it is meant
+# to protect the existing style, not to fight it.
+line-length = 100
+
+[tool.ruff.lint]
+# Explicit instead of Ruff's own preset: the preset changes between releases, and a new
+# version would otherwise turn an untouched repository red.
+#   E  pycodestyle    F  Pyflakes (real errors)   I  import sorting
+#   UP modernisation  B  bugbear (pitfalls)       RUF/PIE  Ruff's own rules
+select = ["E", "F", "I", "UP", "B", "RUF", "PIE"]
+
+ignore = [
+    # Line length is the formatter's call, not the linter's. Otherwise Ruff reports
+    # violations that "ruff format" cannot break up at all (long URLs, strings).
+    "E501",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI idiom: Depends() and Query() BELONG in the default arguments — that is exactly
+# how the framework expects dependencies to be declared. Without this exemption B008
+# reports a false positive in every router.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+]
+
+[tool.pyright]
+# Pinned explicitly so the editor and the pre-commit hook check the same thing. Without
+# this block the editor follows its own default — and reports green while the hook
+# turns red.
+typeCheckingMode = "standard"
+pythonVersion = "3.14"
+include = ["core", "domains", "tests", "main.py"]
+exclude = ["**/__pycache__", ".venv"]
+
+[tool.pytest.ini_options]
+# -rfE lists failures and errors with a reason, but NOT skips.
+addopts = "-rfE"
+markers = [
+    "integration: runs against a real Neo4j in a Testcontainers container (tests/integration/).",
+]
+
+[tool.poe.tasks]
+dev = "uvicorn main:app --reload"
+start = "uvicorn main:app --host 0.0.0.0 --port 8000"
+# Unit and API tests: no database, no Docker, a few seconds. The integration tests are left
+# out on purpose — they start a container, which is the wrong price for the inner loop.
+test = "pytest core/ domains/ tests/api/ -q"
+lint = "ruff check ."
+lint-fix = "ruff check . --fix"
+typecheck = "pyright"
+
+# Fast inner loop: the unit tests sit colocated next to the logic they cover, so the
+# folders are addressed explicitly. That saves pytest the parse of the tests/ tree for the
+# run developers trigger most often.
+test-unit = "pytest core/ domains/ -q"
+test-unit-cov = "pytest core/ domains/ --cov=core --cov=domains --cov-report=term-missing"
+
+# API tests in isolation — they need no database but exercise the full request flow.
+test-api = "pytest tests/api/ -q"
+
+# Integration tests against a real Neo4j. Testcontainers starts the database once per run
+# and removes it afterwards, so the only requirement is a running Docker.
+test-integration = "pytest tests/integration/ -q"
+test-all = "pytest -q"

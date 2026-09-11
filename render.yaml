@@ -1,0 +1,29 @@
+# Render Blueprint for a public demo of the backend.
+#
+# The database is not part of it: Render offers no Neo4j, so the backend points at a
+# Neo4j Aura Free instance. The steps are in docs/deployment.md.
+
+services:
+  - type: web
+    name: graphforge-erp
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # The root endpoint needs no authentication, the same one the Dockerfile's health check uses.
+    healthCheckPath: /
+    envVars:
+      # Render routes traffic to the port in PORT; the image listens on 8000.
+      - key: PORT
+        value: "8000"
+      # Filled in on the dashboard, never committed: sync: false asks for them on creation.
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USERNAME
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: LOG_LEVEL
+        value: INFO

@@ -1,0 +1,32 @@
+# Environment variables and secrets
+#
+# `.env` holds the database password and the JWT signing key for the compose stack. The
+# example file is the one that belongs in the repository, and the exception below is what
+# keeps it there.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime output — the log sink writes here when the backend is started from the root
+logs/
+
+# Python bytecode and tool caches — pytest and ruff drop these at the repository root when
+# they are started from here rather than from backend/.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,30 @@
+# What does not belong in the build context and therefore not in the image.
+#
+# The most important entry is .venv: the local environment holds absolute paths of the
+# development machine (/home/<name>/...). Were it to arrive in the image through "COPY . .",
+# it would overwrite the .venv created there and the container would not start.
+
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets. In the container the values come from the environment, not from a file —
+# pydantic-settings reads environment variables ahead of the .env.
+.env
+
+# Test tooling and its intermediate state: of no use in a production image, and the
+# dependencies for it are not installed by "uv sync --no-dev" anyway.
+tests/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime output of a local run
+logs/
+
+# Everything else
+.git/
+.gitignore
+Dockerfile
+.dockerignore
