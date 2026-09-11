@@ -17,10 +17,16 @@ import pytest
 
 from core.exceptions import BusinessLogicError, NotFoundError
 from domains.sales.schemas_sales import (
+    Condition,
     Contract,
+    ContractDetail,
+    Customer,
+    Discount,
     Document,
     DocumentDetail,
     DocumentLine,
+    PriceCalculationResponse,
+    PriceOverrideLine,
     RevenueLine,
 )
 
@@ -28,6 +34,7 @@ CUSTOMER_SERVICE = "domains.sales.router_sales.CustomerService"
 DOCUMENT_SERVICE = "domains.sales.router_sales.DocumentService"
 CONTRACT_SERVICE = "domains.sales.router_sales.ContractService"
 REPORT_SERVICE = "domains.sales.router_sales.ReportService"
+PRICING_SERVICE = "domains.sales.router_sales.PriceCalculationService"
 
 
 def _quote() -> dict:
@@ -71,6 +78,38 @@ async def test_creating_a_customer_needs_a_role(async_client, auth):
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_sales_may_create_a_customer(async_client, auth, monkeypatch):
+    """The counterpart of the role test: without it, a green suite would not tell a working
+    gate from a route that rejects everybody."""
+    monkeypatch.setattr(
+        f"{CUSTOMER_SERVICE}.create_customer",
+        AsyncMock(return_value=Customer(id="C-new", name="New Customer GmbH")),
+    )
+
+    response = await async_client.post(
+        "/api/customers", json={"name": "New Customer GmbH"}, headers=auth("Sales")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "C-new"
+
+
+@pytest.mark.asyncio
+async def test_updating_a_customer_passes_the_id_on(async_client, auth, monkeypatch):
+    service = AsyncMock(return_value=Customer(id="C-1001", name="Renamed GmbH"))
+    monkeypatch.setattr(f"{CUSTOMER_SERVICE}.update_customer", service)
+
+    response = await async_client.patch(
+        "/api/customers/C-1001", json={"name": "Renamed GmbH"}, headers=auth("Purchasing")
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Renamed GmbH"
+    assert service.await_args is not None
+    assert service.await_args.args[0] == "C-1001"
 
 
 @pytest.mark.asyncio
@@ -203,6 +242,69 @@ async def test_an_unknown_document_status_answers_422(async_client, auth):
     assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_a_change_is_checked_against_the_stored_type(async_client, auth, monkeypatch):
+    """On PATCH the body carries no type — the role is checked against the document as it is
+    stored. Sales passes the outer gate, but an invoice belongs to accounting."""
+    monkeypatch.setattr(
+        f"{DOCUMENT_SERVICE}.get_document",
+        AsyncMock(return_value=DocumentDetail(number="IN-2026-0001", type="Invoice")),
+    )
+    update = AsyncMock()
+    monkeypatch.setattr(f"{DOCUMENT_SERVICE}.update_document", update)
+
+    response = await async_client.patch(
+        "/api/documents/IN-2026-0001", json={"status": "cancelled"}, headers=auth("Sales")
+    )
+
+    assert response.status_code == 403
+    assert "Accounting" in response.json()["message"]
+    update.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_change_takes_the_employee_from_the_token(async_client, auth, monkeypatch):
+    """Who changed a document ends up on it — and that comes from `sub`, never from the body."""
+    monkeypatch.setattr(
+        f"{DOCUMENT_SERVICE}.get_document",
+        AsyncMock(return_value=DocumentDetail(number="IN-2026-0001", type="Invoice")),
+    )
+    update = AsyncMock(return_value=DocumentDetail(
+        number="IN-2026-0001", type="Invoice", status="cancelled",
+    ))
+    monkeypatch.setattr(f"{DOCUMENT_SERVICE}.update_document", update)
+
+    response = await async_client.patch(
+        "/api/documents/IN-2026-0001", json={"status": "cancelled"},
+        headers=auth("Accounting", sub="7"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert update.await_args is not None
+    assert update.await_args.args[0] == "IN-2026-0001"
+    assert update.await_args.args[2] == "7"
+
+
+@pytest.mark.asyncio
+async def test_the_price_overrides_of_a_document_are_listed(async_client, auth, monkeypatch):
+    monkeypatch.setattr(
+        f"{DOCUMENT_SERVICE}.get_price_overrides",
+        AsyncMock(return_value=[PriceOverrideLine(
+            lineNumber=1, productNumber="ACME-2003", oldPrice=Decimal("24.50"),
+            newPrice=Decimal("19.90"), reason="Loyal customer",
+        )]),
+    )
+
+    response = await async_client.get(
+        "/api/documents/QU-2026-0003/price-overrides", headers=auth("Sales")
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["newPrice"] == "19.90"
+    assert response.json()[0]["reason"] == "Loyal customer"
+
+
 # ==========================================
 # Field masking
 # ==========================================
@@ -252,6 +354,28 @@ async def test_a_sales_document_keeps_its_amounts(async_client, auth, monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_the_document_list_masks_the_purchase_orders_only(async_client, auth, monkeypatch):
+    """The list carries the net amount per document. For Sales the purchase order loses it,
+    the quote next to it keeps its own — and Purchasing sees both."""
+    # Fresh objects per call: the masking mutates what the service hands over (see
+    # test_the_contract_rate_is_masked).
+    monkeypatch.setattr(
+        f"{DOCUMENT_SERVICE}.get_documents",
+        AsyncMock(side_effect=lambda *_, **__: [
+            Document(number="PO-2026-0001", type="PurchaseOrder", totalNet=Decimal("100.00")),
+            Document(number="QU-2026-0001", type="Quote", totalNet=Decimal("250.00")),
+        ]),
+    )
+
+    hidden = (await async_client.get("/api/documents", headers=auth("Sales"))).json()
+    visible = (await async_client.get("/api/documents", headers=auth("Purchasing"))).json()
+
+    assert hidden[0]["totalNet"] is None
+    assert hidden[1]["totalNet"] == "250.00"
+    assert visible[0]["totalNet"] == "100.00"
+
+
+@pytest.mark.asyncio
 async def test_the_contract_rate_is_masked(async_client, auth, monkeypatch):
     """BackOffice maintains the fixed prices and contract discounts. Sales negotiates
     without them, so the rate stays hidden there — deliberately not the other way round."""
@@ -270,6 +394,28 @@ async def test_the_contract_rate_is_masked(async_client, auth, monkeypatch):
 
     assert hidden.json()[0]["discountPercent"] is None
     assert visible.json()[0]["discountPercent"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_the_fixed_prices_of_a_contract_are_masked(async_client, auth, monkeypatch):
+    """The detail view carries the fixed price per product on top of the rate. Both have to
+    go for Sales — the products themselves stay, so sales still knows a condition exists."""
+    monkeypatch.setattr(
+        f"{CONTRACT_SERVICE}.get_contract",
+        AsyncMock(side_effect=lambda *_: ContractDetail(
+            id="CT-1", discountPercent=10.0,
+            conditions=[Condition(productNumber="ACME-2003", fixedPrice=Decimal("19.90"))],
+        )),
+    )
+
+    hidden = (await async_client.get("/api/contracts/CT-1", headers=auth("Sales"))).json()
+    visible = (await async_client.get("/api/contracts/CT-1", headers=auth("BackOffice"))).json()
+
+    assert hidden["discountPercent"] is None
+    assert hidden["conditions"][0]["fixedPrice"] is None
+    assert hidden["conditions"][0]["productNumber"] == "ACME-2003"
+    assert visible["discountPercent"] == 10.0
+    assert visible["conditions"][0]["fixedPrice"] == "19.90"
 
 
 @pytest.mark.asyncio
@@ -360,6 +506,106 @@ async def test_a_goods_receipt_without_a_delivery_note_number_answers_422(async_
         "/api/documents/PO-2026-0001/goods-receipt",
         json={"lines": [{"lineNumber": 1, "quantity": 80.0}]},
         headers=auth("Warehouse"),
+    )
+
+    assert response.status_code == 422
+
+
+# ==========================================
+# Contracts
+# ==========================================
+
+def _contract_body() -> dict:
+    return {"name": "Frame Agreement 2027", "validFrom": "2027-01-01",
+            "validTo": "2027-12-31", "isGlobal": False}
+
+
+@pytest.mark.asyncio
+async def test_the_back_office_creates_a_contract(async_client, auth, monkeypatch):
+    monkeypatch.setattr(
+        f"{CONTRACT_SERVICE}.create_contract",
+        AsyncMock(return_value=ContractDetail(id="CT-9", name="Frame Agreement 2027")),
+    )
+
+    response = await async_client.post(
+        "/api/contracts", json=_contract_body(), headers=auth("BackOffice")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "CT-9"
+
+
+@pytest.mark.asyncio
+async def test_sales_may_not_create_a_contract(async_client, auth, monkeypatch):
+    """Sales negotiates within contracts, it does not write them — a contract sets the prices
+    sales would otherwise grant itself."""
+    service = AsyncMock()
+    monkeypatch.setattr(f"{CONTRACT_SERVICE}.create_contract", service)
+
+    response = await async_client.post(
+        "/api/contracts", json=_contract_body(), headers=auth("Sales")
+    )
+
+    assert response.status_code == 403
+    service.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_back_office_stores_a_fixed_price(async_client, auth, monkeypatch):
+    service = AsyncMock(return_value=ContractDetail(
+        id="CT-1", conditions=[Condition(productNumber="ACME-2003", fixedPrice=Decimal("19.90"))],
+    ))
+    monkeypatch.setattr(f"{CONTRACT_SERVICE}.add_condition", service)
+
+    response = await async_client.post(
+        "/api/contracts/CT-1/conditions",
+        json={"productNumber": "ACME-2003", "fixedPrice": "19.90"},
+        headers=auth("BackOffice"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["conditions"][0]["fixedPrice"] == "19.90"
+    assert service.await_args is not None
+    assert service.await_args.args[0] == "CT-1"
+
+
+# ==========================================
+# Price calculation
+# ==========================================
+
+@pytest.mark.asyncio
+async def test_the_price_calculation_answers_with_the_line_level(async_client, auth, monkeypatch):
+    service = AsyncMock(return_value=PriceCalculationResponse(
+        productNumber="ACME-2003", basePrice=Decimal("24.50"), finalPrice=Decimal("19.90"),
+        discountable=True,
+        discount=Discount(
+            type="ContractFixedPrice", percent=0.0, amount=Decimal("4.60"),
+            source="Key Account Agreement (contract CTR-002)",
+        ),
+    ))
+    monkeypatch.setattr(f"{PRICING_SERVICE}.calculate", service)
+
+    response = await async_client.post(
+        "/api/pricing/calculate",
+        json={"customerId": "C-1001", "productNumber": "ACME-2003", "date": "2026-06-01"},
+        headers=auth("Sales"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["finalPrice"] == "19.90"
+    assert response.json()["discount"]["type"] == "ContractFixedPrice"
+    assert service.await_args is not None
+    assert service.await_args.args[0].customerId == "C-1001"
+
+
+@pytest.mark.asyncio
+async def test_the_price_calculation_needs_a_reference_date(async_client, auth):
+    """Contracts and discounts are valid for a period — without a date there is no answer
+    to which of them applies."""
+    response = await async_client.post(
+        "/api/pricing/calculate",
+        json={"customerId": "C-1001", "productNumber": "ACME-2003"},
+        headers=auth("Sales"),
     )
 
     assert response.status_code == 422

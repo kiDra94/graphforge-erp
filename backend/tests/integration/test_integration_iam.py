@@ -286,6 +286,52 @@ async def test_update_with_roles_without_the_base_role_keeps_it_anyway(neo4j_ses
 
 
 @pytest.mark.asyncio
+async def test_update_to_the_initials_of_somebody_else_is_a_duplicate_key_error(neo4j_session):
+    # Lower case on purpose: the sign-in matches initials case-insensitively, so "ab" would
+    # be the same login name as "AB" — the check has to catch it, not only the exact spelling.
+    await create_roles(neo4j_session, "Sales")
+    await EmployeeRepository.create(
+        EmployeeCreate(
+            name="Person One", initials="AB", email="one@acme.example",
+            password="demo1234", roles=["Sales"],
+        ),
+        neo4j_session,
+    )
+    second = await EmployeeRepository.create(
+        EmployeeCreate(
+            name="Person Two", initials="CD", email="two@acme.example",
+            password="demo1234", roles=["Sales"],
+        ),
+        neo4j_session,
+    )
+
+    with pytest.raises(DuplicateKeyError):
+        await EmployeeRepository.update(second.id, EmployeeUpdate(initials="ab"), neo4j_session)
+
+
+@pytest.mark.asyncio
+async def test_update_that_sends_ones_own_initials_back_is_no_conflict(neo4j_session):
+    # A form sends the whole record back, unchanged initials included. The check finds the
+    # employee themselves under those initials — that must not count as a collision.
+    await create_roles(neo4j_session, "Sales")
+    created = await EmployeeRepository.create(
+        EmployeeCreate(
+            name="Old Name", initials="AB", email="own-initials@acme.example",
+            password="demo1234", roles=["Sales"],
+        ),
+        neo4j_session,
+    )
+
+    updated = await EmployeeRepository.update(
+        created.id, EmployeeUpdate(name="New Name", initials="AB"), neo4j_session
+    )
+
+    assert updated is not None
+    assert updated.name == "New Name"
+    assert updated.initials == "AB"
+
+
+@pytest.mark.asyncio
 async def test_delete_removes_the_employee_and_reports_success(neo4j_session):
     await create_roles(neo4j_session, "Sales")
     created = await EmployeeRepository.create(

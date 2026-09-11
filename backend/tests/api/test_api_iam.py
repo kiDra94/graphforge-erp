@@ -178,6 +178,56 @@ async def test_me_reads_the_user_out_of_the_token(async_client, auth, monkeypatc
     assert service.await_args.args[0] == "7"
 
 
+@pytest.mark.asyncio
+async def test_logout_answers_204(async_client, auth):
+    response = await async_client.post("/api/auth/logout", headers=auth("Sales"))
+
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_logout_still_checks_the_token(async_client):
+    """There is no session to end, but an expired or missing token has to answer 401 all the
+    same — otherwise the endpoint would be the one place that accepts anybody."""
+    response = await async_client.post("/api/auth/logout")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_changing_ones_own_password_uses_the_id_from_the_token(async_client, auth, monkeypatch):
+    """Like `/me`: the id comes from `sub`, so nobody can change somebody else's password
+    through this route."""
+    service = AsyncMock(return_value=None)
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.change_password", service)
+
+    response = await async_client.patch(
+        "/api/auth/me/password",
+        json={"currentPassword": "demo1234", "newPassword": "a-new-password"},
+        headers=auth("Sales", sub="7"),
+    )
+
+    assert response.status_code == 204
+    assert service.await_args is not None
+    assert service.await_args.args[0] == "7"
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_current_password_answers_400(async_client, auth, monkeypatch):
+    monkeypatch.setattr(
+        f"{EMPLOYEE_SERVICE}.change_password",
+        AsyncMock(side_effect=BusinessLogicError("The current password is wrong.")),
+    )
+
+    response = await async_client.patch(
+        "/api/auth/me/password",
+        json={"currentPassword": "wrong", "newPassword": "a-new-password"},
+        headers=auth("Sales"),
+    )
+
+    assert response.status_code == 400
+
+
 # ==========================================
 # User administration
 # ==========================================
@@ -241,3 +291,57 @@ async def test_an_unknown_user_answers_404(async_client, auth, monkeypatch):
     response = await async_client.get("/api/users/999", headers=auth("Admin"))
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_updating_a_user_answers_with_the_changed_record(async_client, auth, monkeypatch):
+    service = AsyncMock(return_value=_employee(name="New Name"))
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.update", service)
+
+    response = await async_client.patch(
+        "/api/users/1", json={"name": "New Name"}, headers=auth("Admin")
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "New Name"
+    assert service.await_args is not None
+    assert service.await_args.args[0] == "1"
+
+
+@pytest.mark.asyncio
+async def test_initials_taken_on_update_answer_409(async_client, auth, monkeypatch):
+    monkeypatch.setattr(
+        f"{EMPLOYEE_SERVICE}.update",
+        AsyncMock(side_effect=DuplicateKeyError("Initials 'MM' are already taken.")),
+    )
+
+    response = await async_client.patch(
+        "/api/users/2", json={"initials": "MM"}, headers=auth("Admin")
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_user_answers_204(async_client, auth, monkeypatch):
+    service = AsyncMock(return_value=None)
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.delete", service)
+
+    response = await async_client.delete("/api/users/9", headers=auth("Admin"))
+
+    assert response.status_code == 204
+    assert service.await_args is not None
+    assert service.await_args.args[0] == "9"
+
+
+@pytest.mark.asyncio
+async def test_only_admin_may_delete_a_user(async_client, auth, monkeypatch):
+    """The one irreversible route in user management — checked on its own rather than
+    trusted to the gate test of the list."""
+    service = AsyncMock(return_value=None)
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.delete", service)
+
+    response = await async_client.delete("/api/users/9", headers=auth("BackOffice"))
+
+    assert response.status_code == 403
+    service.assert_not_awaited()
