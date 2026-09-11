@@ -136,6 +136,7 @@ uv run poe test               # unit and API tests, no database needed
 uv run poe test-unit          # unit tests only
 uv run poe test-api           # API tests only
 uv run poe test-unit-cov      # unit tests with coverage
+uv run poe test-cov           # unit and API tests with coverage — what poe test actually proves
 uv run poe test-integration   # integration tests against a real Neo4j
 uv run poe test-all           # everything
 uv run poe lint               # ruff

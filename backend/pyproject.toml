@@ -102,6 +102,11 @@ test-unit-cov = "pytest core/ domains/ --cov=core --cov=domains --cov-report=ter
 # API tests in isolation — they need no database but exercise the full request flow.
 test-api = "pytest tests/api/ -q"
 
+# Coverage over the same tests `test` runs. Unit tests alone under-report router_*.py: a
+# router is exercised end to end by the API tests, not by the unit tests next to it. This
+# is the number that reflects what `poe test` actually proves, before a database is needed.
+test-cov = "pytest core/ domains/ tests/api/ --cov=core --cov=domains --cov-report=term-missing"
+
 # Integration tests against a real Neo4j. Testcontainers starts the database once per run
 # and removes it afterwards, so the only requirement is a running Docker.
 test-integration = "pytest tests/integration/ -q"
