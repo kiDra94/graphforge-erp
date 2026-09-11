@@ -15,7 +15,7 @@ Both end at **http://localhost:8000/api/docs** — under `/api`, not at the root
 - [Option B — local backend](#option-b--local-backend-against-your-own-neo4j): the backend through `uv`, against a Neo4j of your own.
 
 Afterwards: [sign in](#sign-in) with one of the [demo accounts](#demo-accounts), and [run the checks](#tests-lint-type-check).
-To put a public demo online, see [deployment.md](deployment.md).
+A live demo already runs at [graphforge-erp.onrender.com/api/docs](https://graphforge-erp.onrender.com/api/docs); see [deployment.md](deployment.md) for how it is set up and how to re-create it.
 
 ---
 

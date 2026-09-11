@@ -11,6 +11,8 @@ It covers the full flow of a manufacturing business: products with recursive bil
 
 **65 REST endpoints · 8 domains · 1,290+ tests — 820 without a database, 470 against a real Neo4j.**
 
+**Live demo:** [Swagger UI](https://graphforge-erp.onrender.com/api/docs) — sign in with `max.mustermann@acme.example` / `demo1234` (the first request may take a minute while the free instance wakes up).
+
 The requirements come from day-to-day work in a real manufacturing business; this public version is reduced to its core and anonymised.
 The data is invented. The architecture is not.
 
