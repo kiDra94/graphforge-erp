@@ -8,6 +8,10 @@
 # reran on every `up` would be a surprise waiting to happen — the file is idempotent, but
 # nobody expects a start command to touch data.
 
+# A fixed project name, so volume and network names do not depend on the folder the
+# repository sits in — without it, renaming or re-cloning the folder starts on an empty volume.
+name: graphforge-erp
+
 services:
   neo4j:
     image: neo4j:5-community
