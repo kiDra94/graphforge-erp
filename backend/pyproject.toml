@@ -75,6 +75,13 @@ addopts = "-rfE"
 markers = [
     "integration: runs against a real Neo4j in a Testcontainers container (tests/integration/).",
 ]
+filterwarnings = [
+    # Starlette's own testclient.py names `anyio.abc.BlockingPortal` in a module-level type
+    # alias, purely for annotation — the warning fires on import, before any code of ours
+    # runs. Matched on the exact message rather than ignored by category, so an unrelated
+    # DeprecationWarning from our own code still surfaces.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.poe.tasks]
 dev = "uvicorn main:app --reload"
