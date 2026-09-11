@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![Neo4j](https://img.shields.io/badge/Neo4j-5-4581C3?logo=neo4j&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1290%2B-brightgreen)
+[![CI](https://github.com/kiDra94/graphforge-erp/actions/workflows/ci.yml/badge.svg)](https://github.com/kiDra94/graphforge-erp/actions/workflows/ci.yml)
 ![Licence](https://img.shields.io/badge/licence-Apache%202.0-blue)
 
 The backend of a small ERP system, built with **FastAPI** on **Neo4j** and organised by domain.
@@ -88,6 +88,8 @@ The full model, with every label, relationship and constraint, is in [docs/data-
 ## Quick start
 
 ```bash
+git clone https://github.com/kiDra94/graphforge-erp.git
+cd graphforge-erp
 cp .env.example .env                        # set a password and a JWT secret
 docker compose up -d                        # neo4j + backend
 docker compose --profile seed up seed       # once: demo data

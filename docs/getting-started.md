@@ -31,9 +31,11 @@ To put a public demo online, see [deployment.md](deployment.md).
 
 ## Option A — Docker Compose: the whole stack
 
-From the repository root:
+Clone the repository and work from its root:
 
 ```bash
+git clone https://github.com/kiDra94/graphforge-erp.git
+cd graphforge-erp
 cp .env.example .env                        # set NEO4J_PASSWORD and JWT_SECRET_KEY
 docker compose up -d                        # neo4j + backend
 docker compose --profile seed up seed       # once: schema and demo data
