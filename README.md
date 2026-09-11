@@ -9,7 +9,7 @@
 The backend of a small ERP system, built with **FastAPI** on **Neo4j** and organised by domain.
 It covers the full flow of a manufacturing business: products with recursive bills of materials, stock derived from its own movement history, documents from quote to invoice, purchasing with reorder suggestions, serialised assets with a digital twin and a service forecast, and role-based notifications pushed over WebSocket.
 
-**65 REST endpoints · 8 domains · 1,290+ tests — 820 without a database, 470 against a real Neo4j.**
+**65 REST endpoints · 8 domains · tested on three levels, from pure functions to a real Neo4j.**
 
 **Live demo:** [Swagger UI](https://graphforge-erp.onrender.com/api/docs) — sign in with `max.mustermann@acme.example` / `demo1234` (the first request may take a minute while the free instance wakes up).
 
