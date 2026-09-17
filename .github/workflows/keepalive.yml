@@ -1,0 +1,35 @@
+# Pings the public demo daily so neither Render's free-tier service nor the Neo4j Aura
+# Free database it talks to ever go long enough without traffic to be put to sleep.
+#
+# The root endpoint (`/`) is a pure health check with no auth and no database query, but
+# hitting it wakes a sleeping Render container, which reruns the app's lifespan startup —
+# and that startup calls `driver.verify_connectivity()` against Aura (see backend/main.py),
+# which is what actually counts as activity from Aura's side. A daily run stays comfortably
+# inside both free tiers' inactivity windows without relying on anyone remembering to open
+# the demo by hand.
+
+name: Keep demo alive
+
+on:
+  schedule:
+    # 06:00 UTC daily. Cron minute/hour are deliberately off a round number — GitHub
+    # throttles and can delay workflows scheduled exactly on the hour under load.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the live demo
+        # Render's free tier can take up to ~60s to wake a sleeping instance, and Aura's own
+        # first connection after being resumed adds more on top — retry generously instead
+        # of failing the workflow (and spamming Actions failure notifications) on a slow but
+        # successful wake-up.
+        run: |
+          curl --fail --silent --show-error \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 15 \
+            --retry-all-errors \
+            https://graphforge-erp.onrender.com/
