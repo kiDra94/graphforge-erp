@@ -32,3 +32,6 @@ logs/
 .idea/
 .vscode/
 .DS_Store
+
+# Playwright failure screenshots (poe test-e2e)
+test-results/
