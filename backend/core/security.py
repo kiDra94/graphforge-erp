@@ -9,7 +9,9 @@ from fastapi.security import OAuth2PasswordBearer
 
 from core.config import get_settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# `tokenUrl` is only read by the Swagger UI: its *Authorize* dialog posts the credentials
+# there form-encoded. Hence `/api/auth/token`, the form twin of the JSON `/api/auth/login`.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 
 def hash_password(password: str) -> str:
