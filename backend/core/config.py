@@ -64,6 +64,15 @@ class Settings(BaseSettings):
         description="Enables debug mode: more detailed logs and extended error messages."
     )
 
+    DEMO_MODE: bool = Field(
+        default=False,
+        description=(
+            "Set on the public demo, where every visitor shares the demo accounts: refuses "
+            "the account changes that would lock the next visitor out (own password, editing "
+            "and deleting users) and says so on the Swagger page."
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
