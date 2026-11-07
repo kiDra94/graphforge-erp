@@ -87,17 +87,48 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 #
 # The interface loads its openapi.json over `openapi_url`, so all three values have to move
 # together; otherwise Swagger shows an empty page.
+#
+# The description is the first thing a visitor of the Swagger UI reads, so it carries the
+# demo accounts from seed.cypher: whoever lands on the live demo can sign in without going
+# looking for the README. They are invented and already public there.
+API_DESCRIPTION = """
+Reference backend of a graph-based ERP: FastAPI, Neo4j, domain-driven design.
+
+### Try it out
+
+1. Click **Authorize** (top right).
+2. Enter one of the demo accounts below as *username* and `demo1234` as *password*;
+   leave *client_id* and *client_secret* empty.
+3. Click **Authorize** in the dialog, close it, and every endpoint is open to that role.
+
+| Username | Role | Sees, among other things |
+| --- | --- | --- |
+| `max.mustermann@acme.example` | Sales | quotes, the service forecast |
+| `erika.musterfrau@acme.example` | Engineering | products, bills of materials, asset releases |
+| `john.doe@acme.example` | Purchasing | purchase prices, margins, reorder suggestions |
+| `jane.roe@acme.example` | BackOffice, Accounting | order confirmations, invoices, contract rates |
+| `sam.sample@acme.example` | Warehouse | stock, transfers, goods receipts |
+| `alex.admin@acme.example` | Admin | everything — `Admin` passes every role check |
+
+Most endpoints answer differently depending on who is asking. To see field masking at work,
+call `GET /api/products/ACME-1000` as `max.mustermann` and then as `john.doe`, and compare
+`costPrice`. To switch accounts, use **Authorize** → **Logout** and sign in again.
+
+Outside the Swagger UI, `POST /api/auth/login` returns the token, which goes into the
+`Authorization: Bearer <token>` header of every further request.
+"""
+
 app = FastAPI(
     title="GraphForge ERP backend",
-    description=(
-        "Reference backend of a graph-based ERP: FastAPI, Neo4j, domain-driven design. "
-        "Every endpoint expects a bearer token from POST /api/auth/login."
-    ),
+    description=API_DESCRIPTION,
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    # Keeps the token across a reload of the page, so a visitor does not have to sign in
+    # again every time.
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
 # CORS does not take effect in the deployed setup at all.
