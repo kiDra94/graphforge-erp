@@ -109,7 +109,7 @@ curl -X POST http://localhost:8000/api/auth/login \
 ```
 
 The token from the response goes into the `Authorization: Bearer <token>` header of every further request.
-In the Swagger UI, the *Authorize* button takes it.
+In the Swagger UI there is nothing to copy: click *Authorize*, enter one of the demo accounts below as *username* and `demo1234` as *password*, and the UI signs in and sends the token itself. The Swagger page lists the demo accounts as well.
 
 ### Demo accounts
 
