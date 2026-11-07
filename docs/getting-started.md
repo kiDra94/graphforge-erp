@@ -138,6 +138,7 @@ uv run poe test-api           # API tests only
 uv run poe test-unit-cov      # unit tests with coverage
 uv run poe test-cov           # unit and API tests with coverage — what poe test actually proves
 uv run poe test-integration   # integration tests against a real Neo4j
+uv run poe test-e2e           # the Swagger UI in a real browser, against the seeded stack
 uv run poe test-all           # everything
 uv run poe lint               # ruff
 uv run poe typecheck          # pyright, standard mode
@@ -145,5 +146,8 @@ uv run poe typecheck          # pyright, standard mode
 
 The integration tests need nothing but a running Docker: Testcontainers starts a Neo4j for the run and removes it afterwards, so neither the compose stack nor your own database is touched.
 Without Docker they are skipped.
+
+The end-to-end tests need Docker as well, plus a browser for Playwright, installed once with `uv run playwright install chromium`, and network access, because the Swagger UI loads its scripts from a CDN.
+A failing test leaves a screenshot in `backend/test-results/`.
 
 How the test levels are split and why is described in the [backend README](../backend/README.md#tests).
