@@ -10,6 +10,9 @@ services:
     plan: free
     rootDir: backend
     dockerfilePath: ./Dockerfile
+    # Deploy a push only once its GitHub checks have passed (lint, type check, unit/API,
+    # integration and end-to-end tests), so a broken commit never reaches the live demo.
+    autoDeployTrigger: checksPass
     # The root endpoint needs no authentication, the same one the Dockerfile's health check uses.
     healthCheckPath: /
     envVars:
