@@ -72,7 +72,7 @@ flowchart TB
 | Clean architecture | Dependencies run strictly inwards: router → service → repository. A router never talks to the database. |
 | Dependency injection | The Neo4j session is injected into the router through `Depends(get_db_session)` and handed down from there. |
 | Managed transactions | Repositories reach Neo4j exclusively through the helpers in `core/neo4j_query.py` (`read_single`, `read_many`, `write_single`, `write_many`, `write_summary`), never through an auto-commit `session.run()`. That wraps every query in `session.execute_read`/`execute_write`, so a transient failure is retried by the driver instead of surfacing as a 500. |
-| A three-level test strategy | Unit tests colocated with the code they cover (no database, no HTTP), API tests in `tests/api/` that send a real request through the real app, and integration tests in `tests/integration/` that run the Cypher against a real Neo4j. |
+| A four-level test strategy | Unit tests colocated with the code they cover (no database, no HTTP), API tests in `tests/api/` that send a real request through the real app, integration tests in `tests/integration/` that run the Cypher against a real Neo4j, and end-to-end tests in `tests/e2e/` that click through the Swagger UI in a real browser. |
 | Central error handling | Services raise business exceptions; `core/exceptions.py` translates them into HTTP responses in one place. |
 
 > **A deliberate exception to “separation of concerns”.** Checks that read the stored state sit in the repository, not in the service — the existence of a parent product and the absence of a cycle when adding a bill-of-materials component, the withdrawal of a release after shipping, the stock check before a release reserves. All of them run inside the same `execute_write` transaction function as the write itself. A separate check in the service would run in a transaction of its own and could be undercut between check and write by a concurrent request (TOCTOU). The rule is therefore not “no logic in the repository” but “whatever has to be atomic with the write belongs in the write's transaction”.
@@ -118,7 +118,8 @@ backend/
 └── tests/
     ├── conftest.py
     ├── api/            # HTTP tests, service layer mocked
-    └── integration/    # repositories against a real Neo4j in Testcontainers
+    ├── integration/    # repositories against a real Neo4j in Testcontainers
+    └── e2e/            # the Swagger UI in Chromium, against the seeded stack
 ```
 
 There is no `requirements.txt` — the project uses `uv` with `pyproject.toml` and `uv.lock` for a deterministic resolution, and the Dockerfile installs with `--locked` so a build cannot silently resolve differently from the one that was tested.
