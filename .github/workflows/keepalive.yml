@@ -1,18 +1,22 @@
-# Pings the public demo daily so neither Render's free-tier service nor the Neo4j Aura
-# Free database it talks to ever go long enough without traffic to be put to sleep.
+# Pings the public demo once a day, so the Neo4j Aura Free database behind it never goes
+# long enough without activity to be paused — and so a broken demo shows up as a failed run
+# here instead of being found by a visitor.
+#
+# What it does NOT do is keep the Render service awake: the free tier puts it to sleep after
+# about 15 minutes without traffic, so most visitors still wait around a minute for the
+# first request. The README says so next to the demo link.
 #
 # The root endpoint (`/`) is a pure health check with no auth and no database query, but
 # hitting it wakes a sleeping Render container, which reruns the app's lifespan startup —
 # and that startup calls `driver.verify_connectivity()` against Aura (see backend/main.py),
-# which is what actually counts as activity from Aura's side. A daily run stays comfortably
-# inside both free tiers' inactivity windows without relying on anyone remembering to open
-# the demo by hand.
+# which is what counts as activity from Aura's side. The nightly reset in reset-demo.yml
+# talks to Aura directly as well; this ping is the one that also goes through Render.
 
 name: Keep demo alive
 
 on:
   schedule:
-    # 06:00 UTC daily. Cron minute/hour are deliberately off a round number — GitHub
+    # 06:17 UTC daily. Cron minute/hour are deliberately off a round number — GitHub
     # throttles and can delay workflows scheduled exactly on the hour under load.
     - cron: "17 6 * * *"
   workflow_dispatch: {}
