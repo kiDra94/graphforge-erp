@@ -12,8 +12,17 @@ The one answer shape is the point of the file. A client that has to know three o
 import pytest
 
 from core.exceptions import BusinessLogicError, DatabaseError, NotFoundError
+from main import api_description
 
 SERVICE = "domains.catalog.router_catalog.ProductService"
+
+
+def test_the_swagger_page_mentions_the_nightly_reset_only_in_demo_mode():
+    """The note promises a reset and locked account changes — true on the public demo,
+    wrong anywhere else."""
+    assert "reset to the demo state every night" in api_description(demo_mode=True)
+    assert "reset" not in api_description(demo_mode=False)
+    assert "max.mustermann@acme.example" in api_description(demo_mode=False)
 
 
 # ==========================================
