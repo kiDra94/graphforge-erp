@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from core.config import get_settings
 from core.database import Neo4jDatabase, close_db_session
 from core.exceptions import (
     BusinessLogicError,
@@ -118,9 +119,22 @@ Outside the Swagger UI, `POST /api/auth/login` returns the token, which goes int
 `Authorization: Bearer <token>` header of every further request.
 """
 
+# Only on the public demo (DEMO_MODE), where visitors share the accounts above.
+DEMO_NOTE = """
+> **This is a shared public demo.** Feel free to create, change and delete — the data is
+> reset to the demo state every night. Changing passwords and editing or deleting users is
+> switched off, so the accounts above keep working for the next visitor.
+"""
+
+
+def api_description(demo_mode: bool) -> str:
+    """The text at the top of the Swagger page, with the demo note when `demo_mode` is on."""
+    return API_DESCRIPTION + DEMO_NOTE if demo_mode else API_DESCRIPTION
+
+
 app = FastAPI(
     title="GraphForge ERP backend",
-    description=API_DESCRIPTION,
+    description=api_description(get_settings().DEMO_MODE),
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
