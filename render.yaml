@@ -30,3 +30,7 @@ services:
         generateValue: true
       - key: LOG_LEVEL
         value: INFO
+      # The demo accounts are public: refuse the account changes that would lock the next
+      # visitor out. The nightly reset (.github/workflows/reset-demo.yml) handles the rest.
+      - key: DEMO_MODE
+        value: "true"
