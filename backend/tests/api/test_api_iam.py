@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from core.config import get_settings
 from core.exceptions import BusinessLogicError, DuplicateKeyError, NotFoundError
-from core.security import hash_password
+from core.security import DEMO_LOCKED_DETAIL, hash_password
 from domains.catalog.schemas_catalog import Product
 from domains.iam.schemas_iam import EmployeeOut, TokenResponse
 
@@ -446,3 +447,71 @@ async def test_only_admin_may_delete_a_user(async_client, auth, monkeypatch):
 
     assert response.status_code == 403
     service.assert_not_awaited()
+
+
+# ==========================================
+# Public demo (DEMO_MODE)
+# ==========================================
+
+@pytest.fixture
+def demo_mode(monkeypatch):
+    """Turns `DEMO_MODE` on for the demo lock, without touching the cached settings."""
+    settings = get_settings().model_copy(update={"DEMO_MODE": True})
+    monkeypatch.setattr("core.security.get_settings", lambda: settings)
+
+
+# The account changes that would lock the next visitor of the demo out, each with the
+# service method that must never be reached.
+_DEMO_LOCKED = [
+    pytest.param(
+        "patch", "/api/auth/me/password",
+        {"currentPassword": "demo1234", "newPassword": "a-new-password"},
+        "change_password", "Sales",
+        id="own-password",
+    ),
+    pytest.param("patch", "/api/users/1", {"name": "Taken Over"}, "update", "Admin", id="edit-user"),
+    pytest.param("delete", "/api/users/1", None, "delete", "Admin", id="delete-user"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("method", "path", "body", "service_method", "role"), _DEMO_LOCKED)
+async def test_the_demo_refuses_account_changes(
+    async_client, auth, monkeypatch, demo_mode, method, path, body, service_method, role
+):
+    service = AsyncMock()
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.{service_method}", service)
+
+    kwargs = {"json": body} if body is not None else {}
+    response = await async_client.request(method, path, headers=auth(role), **kwargs)
+
+    assert response.status_code == 403
+    assert response.json()["message"] == DEMO_LOCKED_DETAIL
+    service.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_demo_lock_still_answers_401_without_a_token(async_client, demo_mode):
+    """The lock only speaks to signed-in users; the gate before it stays the same."""
+    response = await async_client.delete("/api/users/1")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_the_demo_leaves_every_other_write_open(async_client, auth, monkeypatch, demo_mode):
+    """Only the three account changes are locked — creating a user, for one, still works,
+    since the nightly reset removes it again."""
+    monkeypatch.setattr(f"{EMPLOYEE_SERVICE}.create", AsyncMock(return_value=_employee(id="9")))
+
+    response = await async_client.post(
+        "/api/users",
+        json={
+            "name": "New Person", "email": "new.person@acme.example", "initials": "NP",
+            "password": "demo1234", "roles": ["Sales"],
+        },
+        headers=auth("Admin"),
+    )
+
+    assert response.status_code == 201
+
