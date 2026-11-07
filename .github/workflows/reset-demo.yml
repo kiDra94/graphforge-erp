@@ -1,0 +1,60 @@
+# Resets the database of the public demo to the seed every night.
+#
+# The demo accounts are listed on the Swagger page, and every visitor shares them. What one
+# visitor creates, changes or deletes, the next one finds — so once a night the Aura
+# database is emptied and filled from seed.cypher again, and the demo starts each day in the
+# state the README describes. Account changes that would lock others out (passwords, user
+# edits) are refused by the backend itself in demo mode; see DEMO_MODE in render.yaml.
+#
+# Needs three repository secrets (Settings → Secrets and variables → Actions), the same
+# values the Render service uses:
+#   DEMO_NEO4J_URI       neo4j+s://<id>.databases.neo4j.io
+#   DEMO_NEO4J_USERNAME
+#   DEMO_NEO4J_PASSWORD
+
+name: Reset demo data
+
+on:
+  schedule:
+    # 03:47 UTC, the quietest hour for a demo visited from Europe and the Americas. Off the
+    # full hour, because GitHub delays workflows scheduled exactly on it under load.
+    - cron: "47 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  reset:
+    # A fork has no secrets and no demo of its own; without this guard its scheduled runs
+    # would fail every night.
+    if: github.repository == 'kiDra94/graphforge-erp'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Empty the database and load the seed
+        env:
+          NEO4J_URI: ${{ secrets.DEMO_NEO4J_URI }}
+          NEO4J_USERNAME: ${{ secrets.DEMO_NEO4J_USERNAME }}
+          NEO4J_PASSWORD: ${{ secrets.DEMO_NEO4J_PASSWORD }}
+        # One cypher-shell session for both, so the demo is empty for seconds rather than
+        # for the time between two steps. The seed alone would not do: it MERGEs on business
+        # keys, which restores the demo data but leaves whatever visitors added. Constraints
+        # and indexes survive the DETACH DELETE; the seed recreates them IF NOT EXISTS anyway.
+        #
+        # The cypher-shell of the Neo4j image, as in docs/deployment.md, so the reset loads
+        # the file exactly the way it was first loaded. Retried because a sleeping Aura Free
+        # instance can refuse the first connection while it resumes.
+        run: |
+          if [ -z "$NEO4J_URI" ] || [ -z "$NEO4J_USERNAME" ] || [ -z "$NEO4J_PASSWORD" ]; then
+            echo "::error::Set the DEMO_NEO4J_URI, DEMO_NEO4J_USERNAME and DEMO_NEO4J_PASSWORD secrets."
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            if { echo 'MATCH (n) DETACH DELETE n;'; cat seed.cypher; } \
+              | docker run --rm -i neo4j:5-community cypher-shell \
+                  -a "$NEO4J_URI" -u "$NEO4J_USERNAME" -p "$NEO4J_PASSWORD"; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 30 seconds."
+            sleep 30
+          done
+          exit 1
