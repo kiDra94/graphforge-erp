@@ -11,10 +11,14 @@ from unittest.mock import AsyncMock
 import pytest
 
 from core.exceptions import BusinessLogicError, DuplicateKeyError, NotFoundError
+from core.security import hash_password
+from domains.catalog.schemas_catalog import Product
 from domains.iam.schemas_iam import EmployeeOut, TokenResponse
 
 AUTH_SERVICE = "domains.iam.router_iam.AuthService"
 EMPLOYEE_SERVICE = "domains.iam.router_iam.EmployeeService"
+EMPLOYEE_REPOSITORY = "domains.iam.service_iam.EmployeeRepository"
+PRODUCT_SERVICE = "domains.catalog.router_catalog.ProductService"
 
 
 def _employee(**overrides) -> EmployeeOut:
@@ -77,6 +81,103 @@ async def test_the_login_rejects_an_unknown_field(async_client):
 
     assert response.status_code == 422
     assert "user" in response.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_the_swagger_authorize_dialog_can_sign_in(async_client, monkeypatch):
+    """The dialog posts form-encoded `username`/`password` to the scheme's `tokenUrl`.
+
+    The URL is read from the published OpenAPI document instead of being written down
+    here, so the test breaks if the scheme ever points at an endpoint that takes JSON.
+    """
+    login = AsyncMock(return_value=TokenResponse(access_token="signed.jwt.value"))
+    monkeypatch.setattr(f"{AUTH_SERVICE}.login", login)
+    spec = (await async_client.get("/api/openapi.json")).json()
+    scheme = spec["components"]["securitySchemes"]["OAuth2PasswordBearer"]
+    token_url = scheme["flows"]["password"]["tokenUrl"]
+
+    response = await async_client.post(
+        token_url,
+        data={"grant_type": "password", "username": "MM", "password": "demo1234"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == "signed.jwt.value"
+    login.assert_awaited_once()
+    sent = login.call_args.args[0]
+    assert (sent.identifier, sent.password) == ("MM", "demo1234")
+
+
+@pytest.mark.asyncio
+async def test_the_form_sign_in_rejects_wrong_credentials_like_the_json_one(
+    async_client, monkeypatch
+):
+    monkeypatch.setattr(
+        f"{AUTH_SERVICE}.login",
+        AsyncMock(side_effect=BusinessLogicError("Identifier or password is wrong.")),
+    )
+
+    response = await async_client.post(
+        "/api/auth/token",
+        data={"username": "max.mustermann@acme.example", "password": "wrong"},
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_the_token_from_the_authorize_dialog_opens_the_product_list(
+    async_client, monkeypatch
+):
+    """What a visitor of the Swagger UI does: *Authorize*, then `GET /api/products`.
+
+    Unlike the tests above, the sign-in is not mocked. Only the repository is, so the real
+    `AuthService` checks the password against a bcrypt hash and signs a real JWT, and the
+    product route has to accept that very token. Without it the same route answers 401.
+    """
+    monkeypatch.setattr(
+        f"{EMPLOYEE_REPOSITORY}.get_by_email",
+        AsyncMock(return_value={
+            "id": "1",
+            "email": "max.mustermann@acme.example",
+            "name": "Max Mustermann",
+            "active": True,
+            "password": hash_password("demo1234"),
+            "roles": ["Sales"],
+        }),
+    )
+    monkeypatch.setattr(
+        f"{PRODUCT_SERVICE}.get_products",
+        AsyncMock(return_value=[Product(number="ACME-1000", label="Starter Kit A", unit="pcs")]),
+    )
+    assert (await async_client.get("/api/products")).status_code == 401
+
+    sign_in = await async_client.post(
+        "/api/auth/token",
+        data={
+            "grant_type": "password",
+            "username": "max.mustermann@acme.example",
+            "password": "demo1234",
+        },
+    )
+    assert sign_in.status_code == 200
+    token = sign_in.json()["access_token"]
+
+    response = await async_client.get(
+        "/api/products", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["number"] == "ACME-1000"
+
+
+@pytest.mark.asyncio
+async def test_the_form_sign_in_stays_out_of_the_api_documentation(async_client):
+    """It exists for the dialog; the documented sign-in is the JSON one."""
+    spec = (await async_client.get("/api/openapi.json")).json()
+
+    assert "/api/auth/token" not in spec["paths"]
+    assert "/api/auth/login" in spec["paths"]
 
 
 # ==========================================
