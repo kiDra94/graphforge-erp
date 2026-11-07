@@ -1,6 +1,7 @@
 """API routes for authentication and user management."""
 
 from fastapi import APIRouter, Depends, Response, status
+from fastapi.security import OAuth2PasswordRequestForm
 from neo4j import AsyncSession
 
 from core.database import get_db_session
@@ -46,6 +47,24 @@ async def login(data: LoginRequest, session: AsyncSession = Depends(get_db_sessi
     (`active: false`) is answered exactly like wrong credentials, so an attacker cannot
     use the difference to discover which e-mail addresses exist.
     """
+    return await AuthService.login(data, session)
+
+
+# The *Authorize* dialog of the Swagger UI speaks the OAuth2 password flow: it posts
+# `username` and `password` form-encoded to the scheme's `tokenUrl`. `POST /api/auth/login`
+# takes JSON and answers that with a 422, so the dialog needs an endpoint of its own. This
+# one only translates the form into a `LoginRequest` — every rule of the sign-in (lookup by
+# e-mail or initials, locked accounts, the uniform error) stays in `AuthService.login`.
+#
+# Left out of the schema: it exists for the dialog, and listing it next to the JSON login
+# would show two ways to do the same thing.
+@router.post("/api/auth/token", response_model=TokenResponse, include_in_schema=False)
+async def login_form(
+    form: OAuth2PasswordRequestForm = Depends(),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Form-encoded twin of `login`, called by the *Authorize* dialog of the Swagger UI."""
+    data = LoginRequest(identifier=form.username, password=form.password)
     return await AuthService.login(data, session)
 
 
