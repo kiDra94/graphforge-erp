@@ -81,3 +81,36 @@ jobs:
         # container that fails to start into an error rather than a skip — a skipped
         # suite would look exactly like a passing one.
         run: uv run poe test-integration
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Install Chromium
+        # The browser build matching the locked Playwright version, plus the system
+        # libraries it needs on a bare runner.
+        run: uv run playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: uv run poe test-e2e
+
+      - name: Keep the failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: backend/test-results/
