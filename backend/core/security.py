@@ -66,6 +66,26 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     return decode_token(token)
 
 
+DEMO_LOCKED_DETAIL = (
+    "Not available in the public demo: the demo accounts are shared by every visitor."
+)
+
+
+def forbid_in_demo(user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency — refuses the request when `DEMO_MODE` is on.
+
+    For the few account changes that would lock the next visitor of the demo out: a changed
+    password, a demoted or deleted demo account. Everything else stays writable there; the
+    nightly reset of the demo data takes care of the rest.
+
+    Depends on `get_current_user`, so a request without a valid token still gets its 401
+    first — the demo lock only speaks to signed-in users.
+    """
+    if get_settings().DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=DEMO_LOCKED_DETAIL)
+    return user
+
+
 def has_role(user: dict, *roles: str) -> bool:
     """Checks whether the user holds one of the given roles — `Admin` always passes.
 
