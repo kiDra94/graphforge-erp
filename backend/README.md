@@ -68,14 +68,15 @@ Three rules hold throughout, and the docstrings name them where they bite:
 
 ## Tests
 
-The tests sit on three levels, split by what they replace:
+The tests sit on four levels, split by what they replace:
 
 - **Unit tests live next to the code they cover** (`core/`, `domains/*/test_*.py`). They test pure functions against values and repositories against an intercepted query — what is checked there is the parameter binding and the conversion, not the wording of the Cypher, except where the wording carries a rule and says so.
 - **API tests live in `tests/api/`.** They send a real HTTP request through the real app: middleware, routing, Pydantic validation, role dependencies and the global exception handlers all run; only the service layer is mocked away. That is the level where a route order, a role gate and an answer shape can be proven.
 - **Integration tests live in `tests/integration/`.** They run the repositories against a real Neo4j that Testcontainers starts once per run, with the constraints and indexes from `seed.cypher` and an empty graph for every test. That is the level where the Cypher itself is proven: that a query returns the right rows, that a rejected booking leaves nothing behind, that stock and movement history stay consistent.
+- **End-to-end tests live in `tests/e2e/`.** Nothing is mocked: a Neo4j container gets the full `seed.cypher`, the backend runs as its own uvicorn process, and Playwright clicks through the Swagger UI in Chromium — *Authorize*, one request per HTTP method, logout. That is the level where the Swagger UI and the backend are proven to agree: the sign-in form, path parameters, JSON bodies, the token in the header.
 
 The first two levels need no database and finish in seconds; `poe test` runs exactly those.
-The integration tests take a few minutes and need Docker.
+The integration and end-to-end tests take a few minutes and need Docker; the end-to-end tests also need the Playwright browser and network access, because the Swagger UI loads its scripts from a CDN.
 Without Docker they are skipped locally, but fail in CI, where a skipped suite would look like a passing one.
 
 The commands for every level, lint and type check are in [`docs/getting-started.md`](../docs/getting-started.md#tests-lint-type-check).
@@ -91,7 +92,7 @@ The commands for every level, lint and type check are in [`docs/getting-started.
 | **Pydantic v2** | Tolerant read models against the graph, strict write models at the system boundary |
 | **loguru** | Structured logging with a `request_id` that holds across the whole call chain |
 | **pyjwt + bcrypt** | Bearer tokens, hashed passwords |
-| **pytest + Testcontainers** | Unit and API tests without a database, integration tests against a throwaway Neo4j |
+| **pytest + Testcontainers + Playwright** | Unit and API tests without a database, integration tests against a throwaway Neo4j, end-to-end tests in a real browser |
 | **ruff + pyright** | Linting and type checking, both configured explicitly rather than by preset |
 
 ---
