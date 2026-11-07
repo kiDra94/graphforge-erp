@@ -6,7 +6,7 @@ from neo4j import AsyncSession
 
 from core.database import get_db_session
 from core.schemas import ErrorResponse
-from core.security import get_current_user, require_any_role
+from core.security import forbid_in_demo, get_current_user, require_any_role
 
 from .schemas_iam import (
     EmployeeCreate,
@@ -28,6 +28,8 @@ router = APIRouter(tags=["IAM"])
 # fastapi.Depends itself is declared harmless in pyproject.toml, but that exemption only
 # covers the outer call, not the nested one inside it.
 admin_only = Depends(require_any_role("Admin"))
+# Refuses the account changes that would lock the next visitor of the public demo out.
+demo_lock = Depends(forbid_in_demo)
 
 
 @router.post(
@@ -110,9 +112,11 @@ async def me(
 @router.patch(
     "/api/auth/me/password",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[demo_lock],
     responses={
         400: {"model": ErrorResponse, "description": "The current password is wrong"},
         401: {"model": ErrorResponse, "description": "Missing or invalid token"},
+        403: {"model": ErrorResponse, "description": "Not available in the public demo"},
         404: {"model": ErrorResponse, "description": "Employee not found"},
         500: {"model": ErrorResponse, "description": "Internal database error"},
     },
@@ -195,9 +199,10 @@ async def create_user(
 @router.patch(
     "/api/users/{employee_id}",
     response_model=EmployeeOut,
+    dependencies=[demo_lock],
     responses={
         401: {"model": ErrorResponse, "description": "Missing or invalid token"},
-        403: {"model": ErrorResponse, "description": "Role Admin is missing"},
+        403: {"model": ErrorResponse, "description": "Role Admin is missing, or not available in the public demo"},
         404: {"model": ErrorResponse, "description": "Employee was not found"},
         409: {"model": ErrorResponse, "description": "Initials already taken"},
         422: {"description": "Invalid input data"},
@@ -221,9 +226,10 @@ async def update_user(
 @router.delete(
     "/api/users/{employee_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[demo_lock],
     responses={
         401: {"model": ErrorResponse, "description": "Missing or invalid token"},
-        403: {"model": ErrorResponse, "description": "Role Admin is missing"},
+        403: {"model": ErrorResponse, "description": "Role Admin is missing, or not available in the public demo"},
         404: {"model": ErrorResponse, "description": "Employee was not found"},
         500: {"model": ErrorResponse, "description": "Internal database error"},
     },
