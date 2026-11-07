@@ -25,6 +25,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
+    "pytest-playwright>=0.10.0",
     "ruff>=0.16.1",
     "testcontainers[neo4j]>=4.10",
 ]
@@ -74,6 +75,7 @@ exclude = ["**/__pycache__", ".venv"]
 addopts = "-rfE"
 markers = [
     "integration: runs against a real Neo4j in a Testcontainers container (tests/integration/).",
+    "e2e: drives the Swagger UI in a real browser against the seeded stack (tests/e2e/).",
 ]
 filterwarnings = [
     # Starlette's own testclient.py names `anyio.abc.BlockingPortal` in a module-level type
@@ -110,4 +112,8 @@ test-cov = "pytest core/ domains/ tests/api/ --cov=core --cov=domains --cov-repo
 # Integration tests against a real Neo4j. Testcontainers starts the database once per run
 # and removes it afterwards, so the only requirement is a running Docker.
 test-integration = "pytest tests/integration/ -q"
+
+# End-to-end: a seeded Neo4j container, the backend as a uvicorn process, and Chromium
+# clicking through the Swagger UI. Needs Docker and, once, `playwright install chromium`.
+test-e2e = "pytest tests/e2e/ -q --screenshot only-on-failure"
 test-all = "pytest -q"
