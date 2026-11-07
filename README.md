@@ -11,12 +11,12 @@ It covers the full flow of a manufacturing business: products with recursive bil
 
 **65 REST endpoints · 8 domains · tested on three levels, from pure functions to a real Neo4j.**
 
-**Live demo:** [Swagger UI](https://graphforge-erp.onrender.com/api/docs) — sign in with `max.mustermann@acme.example` / `demo1234` (the first request may take a minute while the free instance wakes up).
+**Live demo:** [Swagger UI](https://graphforge-erp.onrender.com/api/docs) — click **Authorize** and sign in with `max.mustermann@acme.example` / `demo1234`; the page lists all six demo accounts and their roles. The data is reset every night, so feel free to change things. The first request may take a minute while the free instance wakes up.
 
 The requirements come from day-to-day work in a real manufacturing business; this public version is reduced to its core and anonymised.
 The data is invented. The architecture is not.
 
-![The Swagger UI of the backend, showing the IAM endpoints](docs/images/swagger-overview.png)
+![The Swagger UI of the live demo: how to sign in with Authorize, and the six demo accounts with their roles](docs/images/swagger-overview.png)
 
 ---
 
@@ -28,7 +28,7 @@ The data is invented. The architecture is not.
 - **Two separate kinds of authorisation.** Role gates decide *who may call* an endpoint; field masking decides *what they get to see*. Purchasing sees purchase prices and margins; Sales, calling the same endpoint, does not.
 - **Designed for concurrent writes.** Existence checks run in the same transaction as the write, and uniqueness is left to database constraints rather than checked beforehand — which removes the two usual sources of check-then-act races.
 - **Strict layering.** Router → service → repository in every domain. There is no Cypher outside a repository and no `session.run()` outside the query helpers.
-- **Tests on three levels.** Unit and API tests need no database and run in about twenty seconds; integration tests run every repository against a real Neo4j started by Testcontainers. CI runs both suites in parallel jobs.
+- **Tests on four levels.** Unit and API tests need no database and run in about twenty seconds; integration tests run every repository against a real Neo4j started by Testcontainers; end-to-end tests click through the Swagger UI in a real browser. CI runs them in parallel jobs, and the live demo is only deployed once all of them pass.
 
 ---
 
@@ -175,17 +175,18 @@ The documents below cover what a docstring cannot:
 
 ## Testing
 
-Tests are split into three levels, according to what each one replaces:
+Tests are split into four levels, according to what each one replaces:
 
 - **Unit tests** sit next to the code they cover. They test pure functions directly, and repositories against an intercepted query, which checks parameter binding and result conversion.
 - **API tests** in `backend/tests/api/` send real HTTP requests through the real app. Middleware, routing, validation, role dependencies and exception handlers all run; only the service layer is mocked.
 - **Integration tests** in `backend/tests/integration/` run the repositories against a real Neo4j that [Testcontainers](https://testcontainers.com) starts once per run, with the schema from `seed.cypher` and an empty graph for every test.
+- **End-to-end tests** in `backend/tests/e2e/` drive the Swagger UI in Chromium with [Playwright](https://playwright.dev), against the real backend and a Neo4j loaded with the full `seed.cypher`: sign in with *Authorize*, then one request per HTTP method and a logout — the path a visitor of the live demo takes.
 
 The first two levels prove everything except one thing: whether a Cypher query returns the right rows.
 That is what the integration tests are for — the document chain from quote to invoice, partial deliveries and cancellations, the goods receipt control, releases and their reservations, the bill-of-materials copy and the service forecast.
 Throughout, they check that stock and movement history still agree after every booking, and that a rejected operation leaves nothing behind.
 
-[CI](.github/workflows/ci.yml) runs lint, type checking, unit and API tests in one job and the integration tests in a second one, in parallel.
+[CI](.github/workflows/ci.yml) runs lint, type checking, unit and API tests in one job, the integration tests in a second and the end-to-end tests in a third, in parallel.
 
 ---
 
@@ -198,7 +199,7 @@ Throughout, they check that stock and movement history still agree after every b
 | **Pydantic v2** | Tolerant read models against the graph, strict write models at the boundary |
 | **PyJWT + bcrypt** | Bearer tokens and hashed passwords |
 | **loguru** | Structured logging with a `request_id` that is carried through the whole call chain |
-| **pytest · ruff · pyright** | Tests, linting and type checking, each configured explicitly |
+| **pytest · Playwright · ruff · pyright** | Tests up to the browser, linting and type checking, each configured explicitly |
 | **uv · Docker Compose · GitHub Actions** | Dependencies, local stack, CI |
 
 ---
